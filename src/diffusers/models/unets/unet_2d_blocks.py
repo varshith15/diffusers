@@ -859,13 +859,15 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
+        kv_cache: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
 
         hidden_states = self.resnets[0](hidden_states, temb)
-        for attn, resnet in zip(self.attentions, self.resnets[1:]):
+        updated_kv_cache = []
+        for idx, (attn, resnet) in enumerate(zip(self.attentions, self.resnets[1:])):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = attn(
                     hidden_states,
@@ -877,17 +879,25 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 )[0]
                 hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb)
             else:
-                hidden_states = attn(
+                hidden_states, _kv_cache = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
                     attention_mask=attention_mask,
                     encoder_attention_mask=encoder_attention_mask,
+                    kv_cache=kv_cache[idx] if kv_cache is not None else None,
                     return_dict=False,
-                )[0]
+                )
                 hidden_states = resnet(hidden_states, temb)
+                if _kv_cache is not None:
+                    updated_kv_cache.append(_kv_cache)
 
-        return hidden_states
+        if len(updated_kv_cache) > 0:
+            updated_kv_cache = torch.cat(updated_kv_cache, dim=0)
+        else:
+            updated_kv_cache = None
+
+        return hidden_states, updated_kv_cache
 
 
 class UNetMidBlock2DSimpleCrossAttn(nn.Module):
@@ -1245,6 +1255,7 @@ class CrossAttnDownBlock2D(nn.Module):
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         additional_residuals: Optional[torch.Tensor] = None,
+        kv_cache: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...]]:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
@@ -1254,6 +1265,7 @@ class CrossAttnDownBlock2D(nn.Module):
 
         blocks = list(zip(self.resnets, self.attentions))
 
+        updated_kv_cache = []
         for i, (resnet, attn) in enumerate(blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb)
@@ -1267,14 +1279,17 @@ class CrossAttnDownBlock2D(nn.Module):
                 )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
-                hidden_states = attn(
+                hidden_states, _kv_cache = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
                     attention_mask=attention_mask,
                     encoder_attention_mask=encoder_attention_mask,
+                    kv_cache=kv_cache[i] if kv_cache is not None else None,
                     return_dict=False,
-                )[0]
+                )
+                if _kv_cache is not None:
+                    updated_kv_cache.append(_kv_cache)
 
             # apply additional residuals to the output of the last pair of resnet and attention blocks
             if i == len(blocks) - 1 and additional_residuals is not None:
@@ -1288,7 +1303,12 @@ class CrossAttnDownBlock2D(nn.Module):
 
             output_states = output_states + (hidden_states,)
 
-        return hidden_states, output_states
+        if len(updated_kv_cache) > 0:
+            updated_kv_cache = torch.cat(updated_kv_cache, dim=0)
+        else:
+            updated_kv_cache = None
+
+        return hidden_states, output_states, updated_kv_cache
 
 
 class DownBlock2D(nn.Module):
@@ -2412,6 +2432,7 @@ class CrossAttnUpBlock2D(nn.Module):
         upsample_size: Optional[int] = None,
         attention_mask: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
+        kv_cache: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
@@ -2424,7 +2445,8 @@ class CrossAttnUpBlock2D(nn.Module):
             and getattr(self, "b2", None)
         )
 
-        for resnet, attn in zip(self.resnets, self.attentions):
+        updated_kv_cache = []
+        for idx, (resnet, attn) in enumerate(zip(self.resnets, self.attentions)):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
@@ -2455,20 +2477,28 @@ class CrossAttnUpBlock2D(nn.Module):
                 )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
-                hidden_states = attn(
+                hidden_states, _kv_cache = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
                     attention_mask=attention_mask,
                     encoder_attention_mask=encoder_attention_mask,
+                    kv_cache=kv_cache[idx] if kv_cache is not None else None,
                     return_dict=False,
-                )[0]
+                )
+                if _kv_cache is not None:
+                    updated_kv_cache.append(_kv_cache)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(hidden_states, upsample_size)
 
-        return hidden_states
+        if len(updated_kv_cache) > 0:
+            updated_kv_cache = torch.cat(updated_kv_cache, dim=0)
+        else:
+            updated_kv_cache = None
+
+        return hidden_states, updated_kv_cache
 
 
 class UpBlock2D(nn.Module):

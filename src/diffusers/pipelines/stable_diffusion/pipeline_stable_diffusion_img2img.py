@@ -882,6 +882,7 @@ class StableDiffusionImg2ImgPipeline(
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        kv_cache: Optional[torch.Tensor] = None,
         **kwargs,
     ):
         r"""
@@ -1098,15 +1099,16 @@ class StableDiffusionImg2ImgPipeline(
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                noise_pred = self.unet(
+                noise_pred, kv_cache = self.unet(
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
                     timestep_cond=timestep_cond,
                     cross_attention_kwargs=self.cross_attention_kwargs,
                     added_cond_kwargs=added_cond_kwargs,
+                    kv_cache=kv_cache,
                     return_dict=False,
-                )[0]
+                )
 
                 # perform guidance
                 if self.do_classifier_free_guidance:
