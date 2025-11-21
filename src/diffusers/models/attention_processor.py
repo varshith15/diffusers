@@ -569,7 +569,7 @@ class Attention(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        kv_cache: Optional[torch.Tensor] = None,
+        kvo_cache: Optional[torch.Tensor] = None,
         **cross_attention_kwargs,
     ) -> torch.Tensor:
         r"""
@@ -608,7 +608,7 @@ class Attention(nn.Module):
             hidden_states,
             encoder_hidden_states=encoder_hidden_states,
             attention_mask=attention_mask,
-            kv_cache=kv_cache,
+            kvo_cache=kvo_cache,
             **cross_attention_kwargs,
         )
 
@@ -2709,7 +2709,7 @@ class AttnProcessor2_0:
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         temb: Optional[torch.Tensor] = None,
-        kv_cache: Optional[torch.Tensor] = None,
+        kvo_cache: Optional[torch.Tensor] = None,
         *args,
         **kwargs,
     ) -> torch.Tensor:
@@ -2785,7 +2785,7 @@ class AttnProcessor2_0:
 
         hidden_states = hidden_states / attn.rescale_output_factor
 
-        return hidden_states, kv_cache
+        return hidden_states, kvo_cache
 
 
 class XLAFlashAttnProcessor2_0:
