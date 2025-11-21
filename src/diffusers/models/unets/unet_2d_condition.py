@@ -65,7 +65,7 @@ class UNet2DConditionOutput(BaseOutput):
     """
 
     sample: torch.Tensor = None
-    kv_cache: Optional[torch.Tensor] = None
+    kvo_cache: Optional[torch.Tensor] = None
 
 
 class UNet2DConditionModel(
@@ -1047,7 +1047,7 @@ class UNet2DConditionModel(
         mid_block_additional_residual: Optional[torch.Tensor] = None,
         down_intrablock_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
-        kv_cache: Optional[torch.Tensor] = None,
+        kvo_cache: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
@@ -1202,8 +1202,8 @@ class UNet2DConditionModel(
             down_intrablock_additional_residuals = down_block_additional_residuals
             is_adapter = True
 
-        idx = 0
-        updated_kv_cache = []
+        cache_idx = 0
+        kvo_cache_list = []
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
@@ -1212,19 +1212,20 @@ class UNet2DConditionModel(
                 if is_adapter and len(down_intrablock_additional_residuals) > 0:
                     additional_residuals["additional_residuals"] = down_intrablock_additional_residuals.pop(0)
 
-                sample, res_samples, _kv_cache = downsample_block(
+                block_cache_in = kvo_cache[cache_idx] if kvo_cache is not None else None
+                sample, res_samples, block_cache_out = downsample_block(
                     hidden_states=sample,
                     temb=emb,
                     encoder_hidden_states=encoder_hidden_states,
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
                     encoder_attention_mask=encoder_attention_mask,
-                    kv_cache=kv_cache[idx] if kv_cache is not None else None,
+                    kvo_cache=block_cache_in,
                     **additional_residuals,
                 )
-                idx += 1
-                if _kv_cache is not None:
-                    updated_kv_cache.append(_kv_cache)
+                cache_idx += 1
+                if block_cache_out is not None:
+                    kvo_cache_list.append(block_cache_out)
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
                 if is_adapter and len(down_intrablock_additional_residuals) > 0:
@@ -1246,18 +1247,19 @@ class UNet2DConditionModel(
         # 4. mid
         if self.mid_block is not None:
             if hasattr(self.mid_block, "has_cross_attention") and self.mid_block.has_cross_attention:
-                sample, _kv_cache = self.mid_block(
+                block_cache_in = kvo_cache[cache_idx] if kvo_cache is not None else None
+                sample, block_cache_out = self.mid_block(
                     sample,
                     emb,
                     encoder_hidden_states=encoder_hidden_states,
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
                     encoder_attention_mask=encoder_attention_mask,
-                    kv_cache=kv_cache[idx] if kv_cache is not None else None,
+                    kvo_cache=block_cache_in,
                 )
-                if _kv_cache is not None:
-                    updated_kv_cache.append(_kv_cache)
-                idx += 1
+                if block_cache_out is not None:
+                    kvo_cache_list.append(block_cache_out)
+                cache_idx += 1
             else:
                 sample = self.mid_block(sample, emb)
 
@@ -1285,7 +1287,8 @@ class UNet2DConditionModel(
                 upsample_size = down_block_res_samples[-1].shape[2:]
 
             if hasattr(upsample_block, "has_cross_attention") and upsample_block.has_cross_attention:
-                sample, _kv_cache = upsample_block(
+                block_cache_in = kvo_cache[cache_idx] if kvo_cache is not None else None
+                sample, block_cache_out = upsample_block(
                     hidden_states=sample,
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
@@ -1294,11 +1297,11 @@ class UNet2DConditionModel(
                     upsample_size=upsample_size,
                     attention_mask=attention_mask,
                     encoder_attention_mask=encoder_attention_mask,
-                    kv_cache=kv_cache[idx] if kv_cache is not None else None,
+                    kvo_cache=block_cache_in,
                 )
-                idx += 1
-                if _kv_cache is not None:
-                    updated_kv_cache.append(_kv_cache)
+                cache_idx += 1
+                if block_cache_out is not None:
+                    kvo_cache_list.append(block_cache_out)
             else:
                 sample = upsample_block(
                     hidden_states=sample,
@@ -1317,12 +1320,9 @@ class UNet2DConditionModel(
             # remove `lora_scale` from each PEFT layer
             unscale_lora_layers(self, lora_scale)
 
-        if len(updated_kv_cache) > 0:
-            updated_kv_cache = torch.cat(updated_kv_cache, dim=0)
-        else:
-            updated_kv_cache = None
+        kvo_cache_out = torch.stack(kvo_cache_list, dim=0) if kvo_cache_list else None
 
         if not return_dict:
-            return (sample, updated_kv_cache)
+            return (sample, kvo_cache_out)
 
-        return UNet2DConditionOutput(sample=sample, kv_cache=updated_kv_cache)
+        return UNet2DConditionOutput(sample=sample, kvo_cache=kvo_cache_out)

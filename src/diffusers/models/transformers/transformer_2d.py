@@ -331,7 +331,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
         cross_attention_kwargs: Dict[str, Any] = None,
         attention_mask: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
-        kv_cache: Optional[torch.Tensor] = None,
+        kvo_cache: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ):
         """
@@ -412,7 +412,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
             )
 
         # 2. Blocks
-        updated_kv_cache = []
+        kvo_cache_list = []
         for idx, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
@@ -426,7 +426,8 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
                     class_labels,
                 )
             else:
-                hidden_states, _kv_cache = block(
+                block_cache_in = kvo_cache[idx] if kvo_cache is not None else None
+                hidden_states, block_cache_out = block(
                     hidden_states,
                     attention_mask=attention_mask,
                     encoder_hidden_states=encoder_hidden_states,
@@ -434,15 +435,12 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
                     timestep=timestep,
                     cross_attention_kwargs=cross_attention_kwargs,
                     class_labels=class_labels,
-                    kv_cache=kv_cache[idx] if kv_cache is not None else None,
+                    kvo_cache=block_cache_in,
                 )
-                if _kv_cache is not None:
-                    updated_kv_cache.append(_kv_cache)
+                if block_cache_out is not None:
+                    kvo_cache_list.append(block_cache_out)
 
-        if len(updated_kv_cache) > 0:
-            updated_kv_cache = torch.cat(updated_kv_cache, dim=0)
-        else:
-            updated_kv_cache = None
+        kvo_cache_out = torch.stack(kvo_cache_list, dim=0) if kvo_cache_list else None
 
         # 3. Output
         if self.is_input_continuous:
@@ -467,9 +465,9 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
             )
 
         if not return_dict:
-            return (output, updated_kv_cache,)
+            return (output, kvo_cache_out,)
 
-        return Transformer2DModelOutput(sample=output, kv_cache=updated_kv_cache)
+        return Transformer2DModelOutput(sample=output, kvo_cache=kvo_cache_out)
 
     def _operate_on_continuous_inputs(self, hidden_states):
         batch, _, height, width = hidden_states.shape
