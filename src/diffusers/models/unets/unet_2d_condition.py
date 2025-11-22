@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, List
 
 import torch
 import torch.nn as nn
@@ -65,7 +65,7 @@ class UNet2DConditionOutput(BaseOutput):
     """
 
     sample: torch.Tensor = None
-    kvo_cache: Optional[torch.Tensor] = None
+    kvo_cache: Optional[List[torch.Tensor]] = None
 
 
 class UNet2DConditionModel(
@@ -1047,7 +1047,7 @@ class UNet2DConditionModel(
         mid_block_additional_residual: Optional[torch.Tensor] = None,
         down_intrablock_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
-        kvo_cache: Optional[torch.Tensor] = None,
+        kvo_cache: Optional[List[torch.Tensor]] = None,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
@@ -1203,7 +1203,7 @@ class UNet2DConditionModel(
             is_adapter = True
 
         cache_idx = 0
-        kvo_cache_list = []
+        kvo_cache_out = []
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
@@ -1225,7 +1225,7 @@ class UNet2DConditionModel(
                 )
                 cache_idx += 1
                 if block_cache_out is not None:
-                    kvo_cache_list.append(block_cache_out)
+                    kvo_cache_out.append(block_cache_out)
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
                 if is_adapter and len(down_intrablock_additional_residuals) > 0:
@@ -1258,7 +1258,7 @@ class UNet2DConditionModel(
                     kvo_cache=block_cache_in,
                 )
                 if block_cache_out is not None:
-                    kvo_cache_list.append(block_cache_out)
+                    kvo_cache_out.append(block_cache_out)
                 cache_idx += 1
             else:
                 sample = self.mid_block(sample, emb)
@@ -1301,7 +1301,7 @@ class UNet2DConditionModel(
                 )
                 cache_idx += 1
                 if block_cache_out is not None:
-                    kvo_cache_list.append(block_cache_out)
+                    kvo_cache_out.append(block_cache_out)
             else:
                 sample = upsample_block(
                     hidden_states=sample,
@@ -1319,8 +1319,6 @@ class UNet2DConditionModel(
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
             unscale_lora_layers(self, lora_scale)
-
-        kvo_cache_out = torch.stack(kvo_cache_list, dim=0) if kvo_cache_list else None
 
         if not return_dict:
             return (sample, kvo_cache_out)

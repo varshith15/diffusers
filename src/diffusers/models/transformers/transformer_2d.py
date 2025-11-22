@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 import torch
 import torch.nn.functional as F
@@ -331,7 +331,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
         cross_attention_kwargs: Dict[str, Any] = None,
         attention_mask: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
-        kvo_cache: Optional[torch.Tensor] = None,
+        kvo_cache: Optional[List[torch.Tensor]] = None,
         return_dict: bool = True,
     ):
         """
@@ -412,7 +412,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
             )
 
         # 2. Blocks
-        kvo_cache_list = []
+        kvo_cache_out = []
         for idx, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
@@ -438,9 +438,8 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
                     kvo_cache=block_cache_in,
                 )
                 if block_cache_out is not None:
-                    kvo_cache_list.append(block_cache_out)
+                    kvo_cache_out.append(block_cache_out)
 
-        kvo_cache_out = torch.stack(kvo_cache_list, dim=0) if kvo_cache_list else None
 
         # 3. Output
         if self.is_input_continuous:

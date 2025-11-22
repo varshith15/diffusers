@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union, List
 
 import numpy as np
 import torch
@@ -859,14 +859,14 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
-        kvo_cache: Optional[torch.Tensor] = None,
+        kvo_cache: Optional[List[torch.Tensor]] = None,
     ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
 
         hidden_states = self.resnets[0](hidden_states, temb)
-        kvo_cache_list = []
+        kvo_cache_out = []
         for idx, (attn, resnet) in enumerate(zip(self.attentions, self.resnets[1:])):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = attn(
@@ -891,9 +891,8 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 )
                 hidden_states = resnet(hidden_states, temb)
                 if block_cache_out is not None:
-                    kvo_cache_list.append(block_cache_out)
+                    kvo_cache_out.append(block_cache_out)
 
-        kvo_cache_out = torch.stack(kvo_cache_list, dim=0) if kvo_cache_list else None
         return hidden_states, kvo_cache_out
 
 
@@ -1252,7 +1251,7 @@ class CrossAttnDownBlock2D(nn.Module):
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         additional_residuals: Optional[torch.Tensor] = None,
-        kvo_cache: Optional[torch.Tensor] = None,
+        kvo_cache: Optional[List[torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...]]:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
@@ -1262,7 +1261,7 @@ class CrossAttnDownBlock2D(nn.Module):
 
         blocks = list(zip(self.resnets, self.attentions))
 
-        kvo_cache_list = []
+        kvo_cache_out = []
         for i, (resnet, attn) in enumerate(blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb)
@@ -1287,7 +1286,7 @@ class CrossAttnDownBlock2D(nn.Module):
                     return_dict=False,
                 )
                 if block_cache_out is not None:
-                    kvo_cache_list.append(block_cache_out)
+                    kvo_cache_out.append(block_cache_out)
 
             # apply additional residuals to the output of the last pair of resnet and attention blocks
             if i == len(blocks) - 1 and additional_residuals is not None:
@@ -1301,7 +1300,6 @@ class CrossAttnDownBlock2D(nn.Module):
 
             output_states = output_states + (hidden_states,)
 
-        kvo_cache_out = torch.stack(kvo_cache_list, dim=0) if kvo_cache_list else None
         return hidden_states, output_states, kvo_cache_out
 
 
@@ -2426,7 +2424,7 @@ class CrossAttnUpBlock2D(nn.Module):
         upsample_size: Optional[int] = None,
         attention_mask: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
-        kvo_cache: Optional[torch.Tensor] = None,
+        kvo_cache: Optional[List[torch.Tensor]] = None,
     ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
@@ -2439,7 +2437,7 @@ class CrossAttnUpBlock2D(nn.Module):
             and getattr(self, "b2", None)
         )
 
-        kvo_cache_list = []
+        kvo_cache_out = []
         for idx, (resnet, attn) in enumerate(zip(self.resnets, self.attentions)):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
@@ -2482,13 +2480,12 @@ class CrossAttnUpBlock2D(nn.Module):
                     return_dict=False,
                 )
                 if block_cache_out is not None:
-                    kvo_cache_list.append(block_cache_out)
+                    kvo_cache_out.append(block_cache_out)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(hidden_states, upsample_size)
 
-        kvo_cache_out = torch.stack(kvo_cache_list, dim=0) if kvo_cache_list else None
         return hidden_states, kvo_cache_out
 
 

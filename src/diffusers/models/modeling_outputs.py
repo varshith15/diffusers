@@ -31,4 +31,4 @@ class Transformer2DModelOutput(BaseOutput):
     """
 
     sample: "torch.Tensor"  # noqa: F821
-    kvo_cache: "torch.Tensor" = None  # noqa: F821
+    kvo_cache: "List[torch.Tensor]" = None  # noqa: F821
