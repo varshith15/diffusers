@@ -879,7 +879,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 )[0]
                 hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb)
             else:
-                block_cache_in = kvo_cache[idx] if kvo_cache is not None else None
+                block_cache_in = kvo_cache[idx] if kvo_cache else None
                 hidden_states, block_cache_out = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -1275,7 +1275,7 @@ class CrossAttnDownBlock2D(nn.Module):
                 )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
-                block_cache_in = kvo_cache[i] if kvo_cache is not None else None
+                block_cache_in = kvo_cache[i] if kvo_cache else None
                 hidden_states, block_cache_out = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -2469,7 +2469,7 @@ class CrossAttnUpBlock2D(nn.Module):
                 )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
-                block_cache_in = kvo_cache[idx] if kvo_cache is not None else None
+                block_cache_in = kvo_cache[idx] if kvo_cache else None
                 hidden_states, block_cache_out = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,

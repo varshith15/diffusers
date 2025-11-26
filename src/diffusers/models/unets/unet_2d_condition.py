@@ -1212,7 +1212,7 @@ class UNet2DConditionModel(
                 if is_adapter and len(down_intrablock_additional_residuals) > 0:
                     additional_residuals["additional_residuals"] = down_intrablock_additional_residuals.pop(0)
 
-                block_cache_in = kvo_cache[cache_idx] if kvo_cache is not None else None
+                block_cache_in = kvo_cache[cache_idx] if kvo_cache else None
                 sample, res_samples, block_cache_out = downsample_block(
                     hidden_states=sample,
                     temb=emb,
@@ -1247,7 +1247,7 @@ class UNet2DConditionModel(
         # 4. mid
         if self.mid_block is not None:
             if hasattr(self.mid_block, "has_cross_attention") and self.mid_block.has_cross_attention:
-                block_cache_in = kvo_cache[cache_idx] if kvo_cache is not None else None
+                block_cache_in = kvo_cache[cache_idx] if kvo_cache else None
                 sample, block_cache_out = self.mid_block(
                     sample,
                     emb,
@@ -1287,7 +1287,7 @@ class UNet2DConditionModel(
                 upsample_size = down_block_res_samples[-1].shape[2:]
 
             if hasattr(upsample_block, "has_cross_attention") and upsample_block.has_cross_attention:
-                block_cache_in = kvo_cache[cache_idx] if kvo_cache is not None else None
+                block_cache_in = kvo_cache[cache_idx] if kvo_cache else None
                 sample, block_cache_out = upsample_block(
                     hidden_states=sample,
                     temb=emb,

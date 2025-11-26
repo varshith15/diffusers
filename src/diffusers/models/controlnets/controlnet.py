@@ -800,7 +800,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
-                sample, res_samples = downsample_block(
+                sample, res_samples, _ = downsample_block(
                     hidden_states=sample,
                     temb=emb,
                     encoder_hidden_states=encoder_hidden_states,
@@ -815,7 +815,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         # 4. mid
         if self.mid_block is not None:
             if hasattr(self.mid_block, "has_cross_attention") and self.mid_block.has_cross_attention:
-                sample = self.mid_block(
+                sample, _ = self.mid_block(
                     sample,
                     emb,
                     encoder_hidden_states=encoder_hidden_states,

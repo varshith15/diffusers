@@ -426,7 +426,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
                     class_labels,
                 )
             else:
-                block_cache_in = kvo_cache[idx] if kvo_cache is not None else None
+                block_cache_in = kvo_cache[idx] if kvo_cache else None
                 hidden_states, block_cache_out = block(
                     hidden_states,
                     attention_mask=attention_mask,

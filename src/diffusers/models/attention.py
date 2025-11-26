@@ -1028,12 +1028,14 @@ class BasicTransformerBlock(nn.Module):
             if self.pos_embed is not None and self.norm_type != "ada_norm_single":
                 norm_hidden_states = self.pos_embed(norm_hidden_states)
 
-            attn_output, _ = self.attn2(
+            attn_output= self.attn2(
                 norm_hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 attention_mask=encoder_attention_mask,
                 **cross_attention_kwargs,
             )
+            if isinstance(attn_output, tuple):
+                attn_output = attn_output[0]
             hidden_states = attn_output + hidden_states
 
         # 4. Feed-forward

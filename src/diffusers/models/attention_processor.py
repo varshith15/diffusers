@@ -603,14 +603,23 @@ class Attention(nn.Module):
             )
         cross_attention_kwargs = {k: w for k, w in cross_attention_kwargs.items() if k in attn_parameters}
 
-        return self.processor(
-            self,
-            hidden_states,
-            encoder_hidden_states=encoder_hidden_states,
-            attention_mask=attention_mask,
-            kvo_cache=kvo_cache,
-            **cross_attention_kwargs,
-        )
+        if encoder_hidden_states is None:
+            return self.processor(
+                self,
+                hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                attention_mask=attention_mask,
+                kvo_cache=kvo_cache,
+                **cross_attention_kwargs,
+            )
+        else:
+            return self.processor(
+                self,
+                hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                attention_mask=attention_mask,
+                **cross_attention_kwargs,
+            )
 
     def batch_to_head_dim(self, tensor: torch.Tensor) -> torch.Tensor:
         r"""
